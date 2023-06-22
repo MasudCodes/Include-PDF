@@ -1,7 +1,7 @@
+import os
 import tkinter as tk
 from tkinter import filedialog
-import PyPDF2
-import os
+import textract
 
 
 def select_folder():
@@ -13,8 +13,10 @@ def select_folder():
 def process_files():
     folder_path = folder_entry.get()
     keywords = keyword_entry.get().split(',')
+    filter_option = filter_var.get()
     inclusion_folder = os.path.join(folder_path, 'Inclusion')
     exclusion_folder = os.path.join(folder_path, 'Exclusion')
+    missing_abstract_folder = os.path.join(folder_path, 'Missing Abstract')
     
     if not os.path.exists(inclusion_folder):
         os.makedirs(inclusion_folder)
@@ -22,21 +24,31 @@ def process_files():
     if not os.path.exists(exclusion_folder):
         os.makedirs(exclusion_folder)
     
+    if not os.path.exists(missing_abstract_folder):
+        os.makedirs(missing_abstract_folder)
+    
     for filename in os.listdir(folder_path):
         if filename.endswith('.pdf'):
             pdf_path = os.path.join(folder_path, filename)
-            with open(pdf_path, 'rb') as file:
-                pdf_reader = PyPDF2.PdfReader(file)
-                text = ''
-                for page in pdf_reader.pages:
-                    text += page.extract_text()
-                
-                if any(keyword.lower() in text.lower() for keyword in keywords):
-                    destination = os.path.join(inclusion_folder, filename)
-                else:
-                    destination = os.path.join(exclusion_folder, filename)
-                
-                os.rename(pdf_path, destination)
+            
+            # Extract text from PDF using textract
+            text = textract.process(pdf_path, method='pdfminer').decode('utf-8')
+            
+            if filter_option == 'Abstract':
+                # Check if the PDF has an abstract
+                if 'abstract' not in text.lower():
+                    destination = os.path.join(missing_abstract_folder, filename)
+                    os.rename(pdf_path, destination)
+                    continue
+            elif filter_option == 'Entire Paper':
+                pass
+            
+            if any(keyword.lower() in text.lower() for keyword in keywords):
+                destination = os.path.join(inclusion_folder, filename)
+            else:
+                destination = os.path.join(exclusion_folder, filename)
+            
+            os.rename(pdf_path, destination)
     
     inclusion_files = os.listdir(inclusion_folder)
     exclusion_files = os.listdir(exclusion_folder)
@@ -70,6 +82,15 @@ keyword_label = tk.Label(window, text="Enter Keywords (comma-separated):")
 keyword_label.pack()
 keyword_entry = tk.Entry(window)
 keyword_entry.pack()
+
+# Filter option
+filter_var = tk.StringVar(window, "Abstract")
+filter_label = tk.Label(window, text="Filter Option:")
+filter_label.pack()
+abstract_radio = tk.Radiobutton(window, text="Abstract", variable=filter_var, value="Abstract")
+abstract_radio.pack()
+entire_paper_radio = tk.Radiobutton(window, text="Entire Paper", variable=filter_var, value="Entire Paper")
+entire_paper_radio.pack()
 
 # Process button
 process_button = tk.Button(window, text="Process Files", command=process_files)
